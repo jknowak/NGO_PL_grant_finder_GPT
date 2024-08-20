@@ -1,2 +1,4 @@
 keys.py
 *.csv
+gf_env/
+data/
