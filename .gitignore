@@ -2,3 +2,6 @@ keys.py
 *.csv
 gf_env/
 data/
+credentials.py
+.env
+__pycache__/

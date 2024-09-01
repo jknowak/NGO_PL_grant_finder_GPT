@@ -1,0 +1,4 @@
+2024-08-31 16:31:06,218 - DEBUG - grant_indexer - Logging set up for grant_indexer module
+2024-08-31 16:31:06,265 - DEBUG - grant_indexer - Loaded 20 grants
+2024-08-31 16:31:06,265 - DEBUG - grant_indexer - Document ID: 5de93173-13ee-4e05-8b25-e011441cded3
+2024-08-31 16:31:08,085 - DEBUG - grant_indexer - Indexing complete

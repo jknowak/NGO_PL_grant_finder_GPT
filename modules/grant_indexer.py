@@ -9,43 +9,84 @@ This module handles the following tasks:
 - Saving and loading the index for persistent storage.
 """
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core import Settings, StorageContext
+from llama_index.vector_stores.postgres import PGVectorStore
+from llama_index.embeddings.openai import OpenAIEmbedding, OpenAIEmbeddingMode, OpenAIEmbeddingModelType
+from sqlalchemy import make_url
+
 import psycopg2
-from pgvector.psycopg2 import register_vector
+import openai
+import os
+
+import log
+
+# Set up global logging for the application
+logger = log.setup_custom_logger("grant_indexer")
+logger.debug("Logging set up for grant_indexer module")
+
+def debug_db(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT table_name from information_schema.tables WHERE table_schema='public' AND table_type = 'BASE TABLE';")
+        for row in cur.fetchall():
+            print(row)
+
+openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # Connect to your PostgreSQL database
-conn = psycopg2.connect(
-    host="localhost",
-    port="5432",
-    database="vectordb",
-    user="testuser",
-    password="testpwd",
+connection_string = "postgresql://testuser:testpwd@localhost:5432/vectordb" # format: "postgresql://user:password@host:port"
+db_name = "vectordb"
+conn = psycopg2.connect(connection_string)
+conn.autocommit = True
+
+with conn.cursor() as cur:
+    # Create a table for the items
+    #cur.execute("DROP TABLE IF EXISTS grants;")
+    # Embedding vector is a vector of 1536 dimensions
+    #cur.execute("CREATE TABLE grants (id SERIAL PRIMARY KEY, embedding vector(1536), created_at TIMESTAMPTZ DEFAULT now());")
+    pass
+
+grants = SimpleDirectoryReader("./datasss/grants/").load_data()
+logger.debug(f"Loaded {len(grants)} grants")
+logger.debug(f"Document ID: {grants[0].doc_id}")
+
+# Create a LlamaIndex from the grant descriptions
+url = make_url(connection_string)
+vector_store = PGVectorStore.from_params(
+    database=db_name,
+    host=url.host,
+    password=url.password,
+    port=url.port,
+    user=url.username,
+    schema_name='public',
+    ##table_name="grants",
+
+    embed_dim=512, # OpenAI's text-embedding-3-small model can be set to 512 dimensions
+    hnsw_kwargs={ # HNSW parameters for efficient search, HNSW = Hierarchical Navigable Small World
+        "hnsw_m" : 16,
+        "hnsw_ef_construction" : 64,
+        "hnsw_ef_search" : 40,
+        "hnsw_dist_method" : "vector_cosine_ops",
+    },
 )
 
-# Register the pgvector extension
-register_vector(conn)
 
-# Create a cursor
-cur = conn.cursor()
-# Example: Create a table with a vector column
-cur.execute("""
-    CREATE TABLE IF NOT EXISTS items (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        embedding vector(128)
-    );
-""")
+storage_context = StorageContext.from_defaults(vector_store=vector_store)
+debug_db(conn)
+Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small", dimensions=512)
+debug_db(conn)
+index = VectorStoreIndex.from_documents(grants, storage_context=storage_context, show_progress=True)
+debug_db(conn)
+# commit the transaction
 
-# Make the changes to the database persistent
-conn.commit()
+query_engine = index.as_query_engine()
 
-# Close communication with the database
-cur.close()
-conn.close()
+logger.debug("Indexing complete")
 
-#cur.execute("""DROP TABLE items;""")
+# Save the index to database
 
-grants = SimpleDirectoryReader("./data/grants/").load_data()
+result = index.as_query_engine().query("Grant na ochrone środowiska")
+print(result,"\n")
+print(result.response)
 
-print(grants)
+# Query the database and return the top 4 results
 
-index = VectorStoreIndex.from_documents(grants, show_progress=True)
