@@ -8,3 +8,7 @@ This module handles the following tasks:
 - Utilizing OpenAI's GPT models to assess the match between grant criteria and project descriptions.
 - Providing feedback to the user about the matching results.
 """
+
+
+def query_grants(query):
+  return None
