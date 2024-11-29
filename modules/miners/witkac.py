@@ -1,12 +1,19 @@
 import os
 import requests
+import pandas as pd
 
 from bs4 import BeautifulSoup
 
-from credentials import WITKAC_LOGIN, WITKAC_PASSWORD
+from dotenv import load_dotenv
 
 LOGIN_URL = "https://witkac.pl/Account/Login"
 TABLE_URL = "https://witkac.pl/Contest/IndexTableData"
+CONTEST_URL_PREFIX = "https://witkac.pl/contest/view?id="
+
+# Load environment variables
+load_dotenv()
+WITKAC_LOGIN = os.getenv("WITKAC_LOGIN")
+WITKAC_PASSWORD = os.getenv("WITKAC_PASSWORD")
 
 def get_request_load_dict(start=0, length=100):
     load = {}
@@ -64,7 +71,8 @@ def get_witkac_auth_session():
     # Return the session cookie
     return session
 
-def get_witkac_data():
+def get_grants_table(session) -> pd.DataFrame:
+
     # Get the authenticated session
     session = get_witkac_auth_session()
 
@@ -78,9 +86,42 @@ def get_witkac_data():
     data = data_page.json()
     
     # get data.data as dataframe
-    data = data["data"]
+    df = pd.DataFrame(data["data"])
     # print other keys
     print(data_page.json().keys())
 
+    # print sample of the data
+    print(df.sample(10))
+
+    # save the data to csv in ./data/metadata with current date in the name
+    df.to_csv(f"./data/metadata/witkac_{pd.Timestamp.now().date()}.csv", index=False)
+
+    return df
+
+
+def get_single_grant_page(session,grant_id) -> dict:
+    # get single grant page, but wait to be redirected
+    grant_page = session.get(f"{CONTEST_URL_PREFIX}{grant_id}", allow_redirects=True)
+    # print request headers
+    print("Request headers:")
+    print(grant_page.request.headers)
+    # check status code
+    if grant_page.status_code != 200:
+        raise Exception("Grant page request failed")
+    # print status code
+    print(grant_page.status_code)
+    # print the page url
+    print(grant_page.url)
+    # print the response headers
+    print("Response headers:")
+    print(grant_page.headers)
+    soup = BeautifulSoup(grant_page.content, "html.parser")
+    # search for div with id h3
+    print(soup)
+    
+
+
 if __name__ == "__main__":
-    get_witkac_data()
+    grant_id = 30801
+    session = get_witkac_auth_session()
+    get_single_grant_page(session,grant_id)

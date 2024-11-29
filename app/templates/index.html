@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+    <title>My Flask App</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to grant finder RAG app</h1>
+    </div>
+    <!-- Adding a container to display grants summaries passed to render_template in Flask as dict grant_summareis with name and description -->
+    <div class="container">
+        <h2>Grant Summaries</h2>
+        <ul>
+            {% for name, description in grant_summaries.items() %}
+                <li>{{ name }}: {{ description }}</li>
+            {% endfor %}
+        </ul>
+    <!-- Adding a field to submit a query to my query engine -->
+    <div class="container">
+        <form action="/query" method="post"> 
+            <div class="form-group">
+                <label for="query">Enter your query:</label>
+                <input type="text" class="form-control" id="query" name="query">
+            </div>
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
+    </div>
+</body>
+</html>

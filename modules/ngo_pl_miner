@@ -1,0 +1,123 @@
+import os
+import re
+import json
+import requests
+from bs4 import BeautifulSoup   
+import pandas as pd
+from datetime import datetime
+
+# import log module from parent directory of parent directory
+import log
+
+
+# logger
+logger = log.setup_custom_logger('ngo_pl_miner')
+logger.debug('Logging set up for ngo_pl_miner module')
+
+NGO_URL = 'https://fundusze.ngo.pl/aktualne?when=ever'
+
+def clean_text(text: str) -> str:
+    text = text.strip(' \n\t')
+    text = text.replace('\t','')
+    text_list = text.split('\n')
+    new_list = []
+    for t in text_list:
+        t = t.strip()
+        if t != '' and not t.isspace():
+            new_list.append(t)
+    return '\n'.join(new_list)
+
+def contains_any_class(class_string: str) -> bool:
+    if class_string:
+        classes = class_string.split()  # Split the class string into individual classes
+        counter = 0
+        for c in classes:
+            if c in ['f7', 'flex', 'items-center']:
+                return True
+    return False
+
+# Regular expression pattern to match the number
+pattern = r'\b(\d+)\b'
+
+def get_table_of_grants() -> pd.DataFrame:
+
+    r = requests.get(NGO_URL)
+    soup = BeautifulSoup(r.content, features='html.parser')
+    pages = int(soup.find('div', class_='cms').text.split(' ')[1])//20+1
+    print(f"Jest {pages} stron.")
+    #block_str= {5: ('name', 'descr', 'params', 'tags', 'author'),
+    #            4: ('name', 'params', 'tags', 'author')}
+    #params_str = ('obszar','nabor_do','fundusz','budzet','procent','kwota')
+
+    all_grants_list = []
+
+    for i in range(1,2): # pages+1
+        psoup = BeautifulSoup(requests.get(NGO_URL+f'&page={i}').content, features='html.parser')
+        boxes = psoup.find_all('div', class_='mb5')
+        grants = None
+        for b in boxes:
+            if b.text.strip().startswith('Znalezione konkursy'):
+                grants = b
+        grants = grants.find_all('div', class_='grow-1')
+        print(f"Na stronie {i} znaleziono {len(grants)} grantów.")
+        for n,g in enumerate(grants):
+            # Get title & url
+            try: 
+                h4_tag = g.find('h4')
+                if h4_tag:
+                    title = clean_text(h4_tag.text)
+                    url = h4_tag.find('a')['href']
+                    id = re.search(pattern, url).group(1)
+                    grant_dict = {
+                        'ID':id,
+                        'Title':title,
+                        'URL':url
+                    }
+                    major_boxes = g.find_all('div',class_='pt2')
+                    for mb in major_boxes:
+                        params = mb.find_all('div',class_='flex')
+                        for p in params:
+                            img_tag = p.find('img')
+                            if img_tag:
+                                img_alt = img_tag.get('alt')
+                                value = clean_text(p.text)
+                                grant_dict[img_alt]=value
+                    all_grants_list.append(grant_dict)
+            except IndexError as e:
+                print(f"{e}")
+                continue
+
+    df = pd.DataFrame(all_grants_list)
+    return df
+
+def fetch_grant_description(url: str) -> str:
+    gsoup = BeautifulSoup(requests.get(url).content, features='html.parser')
+    body = gsoup.find('div',id='bodyDiv')
+    descr = body.find('div',class_='measure-wide-ns') # .find('div',class_='cms')
+    descr.find('div',class_='noprint').decompose()
+    descr = clean_text(descr.text)
+    # class="grow-1 center f5 pt1 measure-wide-ns m0-m m0-l pl4-ns pl0-m pl0-l w-two-thirds-ns w-auto-m w-auto-l"
+    return descr
+
+
+def expand_with_description(df: pd.DataFrame) -> None:
+    df['Opis'] = df.URL.apply(fetch_grant_description)
+
+
+def split_into_files(df: pd.DataFrame) -> None:
+    # Iterate through DataFrame rows
+    for _, row in df.iterrows():
+        # Create a file name using the grant id
+        file_name = f"./data/grants/ngo_pl_id_{row[0]}.json"
+        
+        # Open the file in write mode
+        with open(file_name, 'w') as file:
+            # Write the row as a JSON object to the file
+            json.dump(row.to_dict(), file, indent=4)
+            logger.debug(f"Saved grant with ID {row[0]} to file {file_name}")
+
+                
+if __name__ == '__main__':
+    df = get_table_of_grants()
+    expand_with_description(df)
+    split_into_files(df)
